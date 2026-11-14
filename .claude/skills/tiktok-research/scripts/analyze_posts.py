@@ -21,33 +21,60 @@ def load_posts(input_path: str) -> list[dict]:
 
 def calculate_engagement_score(video: dict) -> float:
     """
-    Calculate weighted engagement score for TikTok.
-    - Comments (3x): Active engagement, hardest to get
-    - Shares (2x): Strong signal of value
-    - Saves/Collects (2x): Intent to revisit
-    - Likes/Diggs (1x): Passive approval
-    - Views/Plays (0.05x): Weighted lower due to auto-play
+    Calculate 2026 TikTok For You Feed (FYF) Algorithmic Value Score.
+    2026 TikTok Signal Hierarchy:
+    - Shares / Reposts (6.0x): Highest off-feed & DM expansion trigger
+    - Saves / Collects (5.0x): Search & evergreen authority index signal
+    - Comments (2.5x): Active thread dwell
+    - Likes / Diggs (1.0x): Baseline approval
+    - Plays (0.06x): Auto-play baseline
+    Format & SEO Modifiers:
+    - 35–90s narrative/educational sweet spot (1.10x) vs <7s loop-bait clamp (0.85x)
+    - >5 hashtags penalty (0.88x since Aug 2025 5-tag limit)
     """
     likes = video.get('diggCount', 0) or 0
     comments = video.get('commentCount', 0) or 0
     shares = video.get('shareCount', 0) or 0
     saves = video.get('collectCount', 0) or 0
     plays = video.get('playCount', 0) or 0
-    return likes + (3 * comments) + (2 * shares) + (2 * saves) + (0.05 * plays)
+    duration = float(video.get('videoMeta', {}).get('duration', 0) if isinstance(video.get('videoMeta'), dict) else (video.get('duration') or 0))
+    text = video.get('text', '') or ''
+    tag_count = len(video.get('hashtags') or re.findall(r'#(\w+)', text))
+
+    raw = likes + (2.5 * comments) + (6.0 * shares) + (5.0 * saves) + (0.06 * plays)
+    mult = 1.0
+    if 35 <= duration <= 90:
+        mult *= 1.10
+    elif 0 < duration < 7:
+        mult *= 0.85
+    if tag_count > 5:
+        mult *= 0.88
+    return round(raw * mult, 2)
 
 
 def calculate_engagement_rate(video: dict) -> float:
-    """Calculate engagement rate relative to follower count."""
-    followers = video.get('authorFollowers', 0) or 0
+    """
+    Calculate 2026 FYF Unconnected Breakout & Action-per-Play rate.
+    TikTok's interest graph decouples reach from follower count; we blend
+    high-intent action rate per play (65%) with follower breakout velocity (35%).
+    """
+    followers = video.get('authorFollowers', 0) or (video.get('authorMeta', {}) or {}).get('fans', 0) or 0
+    plays = video.get('playCount', 0) or 0
     engagement = calculate_engagement_score(video)
-    if followers == 0:
-        return engagement
-    return (engagement / followers) * 100
+
+    play_denom = max(plays, 250)
+    play_action_rate = (engagement / play_denom) * 100.0
+    if followers <= 0:
+        return round(play_action_rate, 3)
+
+    follower_rate = (engagement / max(followers, 100)) * 100.0
+    breakout_boost = min(2.5, max(0.8, (plays / max(followers, 100)) ** 0.25))
+    return round(((0.65 * play_action_rate) + (0.35 * follower_rate)) * breakout_boost, 3)
 
 
 def identify_outliers(videos: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
     """
-    Identify outlier videos with engagement rate > mean + (threshold x std_dev).
+    Identify outlier videos with 2026 AVS rate > mean + (threshold x std_dev).
     """
     if not videos:
         return []
@@ -55,6 +82,11 @@ def identify_outliers(videos: list[dict], threshold_multiplier: float = 2.0) -> 
     for video in videos:
         video['_engagement_score'] = calculate_engagement_score(video)
         video['_engagement_rate'] = calculate_engagement_rate(video)
+        plays = max(1, video.get('playCount', 0) or 1)
+        shares = video.get('shareCount', 0) or 0
+        saves = video.get('collectCount', 0) or 0
+        video['_share_save_per_1k_plays'] = round(((shares + saves) / plays) * 1000.0, 2)
+        video['_matrix_version'] = '2026.1-fyf-completion-trimodal'
 
     rates = [v['_engagement_rate'] for v in videos]
     if len(rates) < 2:

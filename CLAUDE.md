@@ -34,18 +34,22 @@ All skills live in `.claude/skills/` and follow a consistent pattern:
 ### Research Skills (platform-specific)
 Each creates timestamped run folders with `raw.json` → `outliers.json` → `video-analysis.json` → `report.md`:
 
-- **x-research**: Fetches tweets via Apify, identifies engagement outliers
-- **instagram-research**: Fetches reels via Apify, identifies outliers, analyzes top 5 videos
-- **youtube-research**: Uses TubeLab API for outlier detection, analyzes top 3 relevant videos
-- **tiktok-research**: Fetches TikToks via Apify, identifies outliers, analyzes top 5 videos
+- **x-research**: Fetches tweets via Apify, identifies 2026 Heavy Ranker conversation & bookmark outliers
+- **instagram-research**: Fetches reels/carousels via Apify, identifies 2026 Dual-Mode (DM Sends + Saves + Unconnected Velocity) outliers, analyzes top 5 videos
+- **youtube-research**: Uses TubeLab API for zScore + subscriber-breakout + satisfaction outlier detection, analyzes top 3 relevant videos
+- **tiktok-research**: Fetches TikToks via Apify, identifies 2026 Share/Collect & FYF Unconnected Breakout outliers, analyzes top 5 videos
+- **linkedin-research**: Analyzes LinkedIn Creator `.xlsx`/`.csv` exports or JSON feeds using LinkedIn's 2026 **360Brew** dwell-time, PDF document carousel, and substantive-comment matrix
 
-### Support Skills
-- **video-content-analyzer**: Gemini AI analysis of video hooks, structure, and CTAs. Used by all research skills.
-- **content-planner**: Orchestrates all 4 research skills in parallel, aggregates into content ideas and platform playbooks
+### Support, Calibration & QA Gate Skills
+- **video-content-analyzer**: Gemini AI analysis of 0–3s hook hold mechanics, 3–5s visual shift cadence, Tri-Modal SEO (spoken + OCR + caption), loop bridges, and Video Editor QA score.
+- **content-planner**: Orchestrates all 5 platform research skills in parallel, checks `.agents/product-marketing.md` for ICP/Anti-ICP alignment, and aggregates into content ideas and platform playbooks.
+- **historical-calibrator**: Ingests multi-year Meta (ZIP/JSON/Business Suite CSV), LinkedIn (XLSX/CSV/Archive), and Metricool CSV exports to compute Empirical Bayes format/hook/hour multipliers and detect `2021–2024` vs `2025–2026` regime shifts.
+- **content-qa-gate**: Pre-publish EOS Content Team Accountability Gate (Strategist, Video Editor, and Distribution seats), ICP/Anti-ICP & AEO Entity Scorer, Trial Reel SOP, and `Content-to-Clients` multi-asset atomizer.
 
 ## Context Files
 
-Configure research targets in `.claude/context/`:
+Configure research targets in `.claude/context/` (user-managed; never overwrite automatically) and brand/ICP context in `.agents/product-marketing.md`:
+- `.agents/product-marketing.md` - Principal brand architecture, Ideal Client Profile (ICP), Anti-Target filters, AEO regional clusters, and compliance guardrails
 - `x-accounts.md` - X/Twitter handles to monitor
 - `instagram-accounts.md` - Instagram accounts to track
 - `tiktok-accounts.md` - TikTok accounts to track
@@ -82,13 +86,21 @@ python3 .claude/skills/youtube-research/scripts/get_channel_videos.py CHANNEL_ID
 python3 .claude/skills/youtube-research/scripts/find_outliers.py --keywords k1 k2 k3 k4 --adjacent-keywords a1 a2 a3 a4 --output-dir {folder}
 ```
 
-## Engagement Scoring
+Historical Calibration & Pre-Publish EOS Team QA Gate:
+```bash
+python3 .claude/skills/historical-calibrator/scripts/calibrate_exports.py --export-dir ~/Downloads/social_exports
+python3 .claude/skills/content-qa-gate/scripts/run_qa_gate.py qa --platform instagram --format reel --text "Draft caption..."
+```
 
-- **X**: Bookmarks 4x, Replies 3x, Retweets 2x, Quotes 2x, Likes 1x
-- **Instagram/TikTok**: Likes + 3×Comments + engagement bonuses for shares/saves/views
-- **YouTube**: zScore × recency_boost (5%/day decay)
+## 2026 Engagement & Algorithmic Value Scoring (AVS)
 
-Outlier threshold: engagement rate > mean + (2.0 × std_dev)
+- **X (Heavy Ranker)**: Replies `13.5x` (up to `~75x` with author thread engagement), Bookmarks `10x`, Quotes `8x`, Retweets `6x`, Likes `1x` (blended `60%` per-view dwell efficiency + `40%` follower breakout; flags outbound URLs for `0.45x` penalty risk)
+- **Instagram (Dual-Mode Mosseri Matrix)**: DM Sends/Shares `5x`, Saves `4x`, Comments `3x`, Likes `1x`, Video Views `0.12x` (penalizes Reels `>180s` at `0.72x` and `>5` hashtags at `0.85x`; blends Reach/Play rate with Unconnected Reach ratio)
+- **TikTok (FYF Completion & Tri-Modal SEO)**: Shares `6x`, Saves/Collects `5x`, Comments `2.5x`, Likes `1x`, Plays `0.06x` (`1.10x` boost for `35–90s` retention sweet spot; `0.88x` penalty for `>5` hashtags)
+- **LinkedIn (360Brew)**: Substantive Comments `8x`, Reposts `6x`, Document Clicks/Saves `4.5x`, Reactions `1x` (`1.34x` PDF Carousel dwell multiplier; flags external body URLs)
+- **YouTube**: `zScore × recency_boost × subscriber_breakout_boost × satisfaction_density_boost`
+
+Outlier threshold: engagement rate > mean + (2.0 × std_dev) (`1.8×` on LinkedIn)
 
 ## Delegation Mode
 

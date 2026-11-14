@@ -107,17 +107,17 @@ def search_outliers(queries: list[str], api_key: str, days_back: int = 30, min_v
 
 def score_video(video: dict) -> float:
     """
-    Calculate a composite score for ranking videos.
-    Balances outlier performance with recency.
-
-    Score formula: zScore * recency_boost
-    - zScore: How much video outperforms channel average
-    - recency_boost: 1.0 for today, decays by 5% per day
+    Calculate a 2026 composite YouTube outlier & satisfaction score.
+    Balances channel-relative zScore, recency, non-subscriber breakout velocity,
+    and post-watch satisfaction density (likes + 4x comments per view).
     """
     stats = video.get("statistics", {})
     z_score = stats.get("zScore", 0) or 0
+    views = float(stats.get("viewCount", 0) or 0)
+    likes = float(stats.get("likeCount", 0) or 0)
+    comments = float(stats.get("commentCount", 0) or 0)
+    subs = float((video.get("channel", {}) or {}).get("subscriberCount", 0) or stats.get("subscriberCount", 0) or 0)
 
-    # Parse publish date
     snippet = video.get("snippet", {})
     published_at = snippet.get("publishedAt", "")
 
@@ -126,12 +126,21 @@ def score_video(video: dict) -> float:
         try:
             pub_date = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
             days_old = (datetime.now(pub_date.tzinfo) - pub_date).days
-            # 5% decay per day, minimum 0.3x
-            recency_boost = max(0.3, 1.0 - (days_old * 0.05))
+            recency_boost = max(0.35, 1.0 - (days_old * 0.04))
         except (ValueError, TypeError):
             pass
 
-    return z_score * recency_boost
+    breakout_boost = 1.0
+    if views > 0 and subs > 0:
+        ratio = views / max(subs, 100.0)
+        breakout_boost = min(1.45, max(0.9, 0.85 + 0.15 * (ratio ** 0.35)))
+
+    satisfaction_boost = 1.0
+    if views >= 500:
+        sat_rate = (likes + 4.0 * comments) / views
+        satisfaction_boost = min(1.30, max(0.9, 0.92 + sat_rate * 2.2))
+
+    return round(z_score * recency_boost * breakout_boost * satisfaction_boost, 3)
 
 
 def download_thumbnail(video: dict, output_dir: Path):

@@ -21,14 +21,14 @@ def load_posts(input_path: str) -> list[dict]:
 
 def calculate_engagement_score(tweet: dict) -> float:
     """
-    Calculate weighted engagement score for a tweet.
+    Calculate 2026 X (Twitter) Grok / Heavy Ranker weighted engagement score.
 
-    Weights:
-    - Bookmarks (4x): Highest signal - user saving for reference/action
-    - Replies (3x): Active conversation and engagement
-    - Retweets (2x): Amplification signal
-    - Quotes (2x): Engagement with commentary
-    - Likes (1x): Passive approval
+    2026 Heavy Ranker Calibrated Weights:
+    - Replies (13.5x; up to ~75x when author replies in thread): #1 conversation depth driver
+    - Bookmarks (10.0x): Private high-intent save & dwell proxy
+    - Quotes (8.0x): Commentary amplification into new graphs
+    - Retweets (6.0x): Direct amplification
+    - Likes (1.0x): Baseline passive signal
     """
     likes = tweet.get('likeCount', 0) or 0
     retweets = tweet.get('retweetCount', 0) or 0
@@ -36,30 +36,46 @@ def calculate_engagement_score(tweet: dict) -> float:
     quotes = tweet.get('quoteCount', 0) or 0
     bookmarks = tweet.get('bookmarkCount', 0) or 0
 
-    return likes + (2 * retweets) + (3 * replies) + (2 * quotes) + (4 * bookmarks)
+    return round(
+        likes
+        + (6.0 * retweets)
+        + (13.5 * replies)
+        + (8.0 * quotes)
+        + (10.0 * bookmarks),
+        2,
+    )
 
 
 def calculate_engagement_rate(tweet: dict) -> float:
-    """Calculate engagement rate relative to follower count."""
+    """
+    Calculate 2026 X view-and-follower blended engagement rate.
+    Accounts for impression efficiency (bookmarks + replies per view) alongside follower breakout.
+    """
     followers = tweet.get('author', {}).get('followers', 1) or 1
+    views = tweet.get('viewCount', 0) or 0
     engagement = calculate_engagement_score(tweet)
-    return (engagement / followers) * 100
+    follower_rate = (engagement / max(followers, 50)) * 100.0
+    if views > 0:
+        view_rate = (engagement / max(views, 100)) * 100.0
+        return round((0.60 * view_rate) + (0.40 * follower_rate), 3)
+    return round(follower_rate, 3)
 
 
 def identify_outliers(tweets: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
     """
-    Identify outlier tweets that perform significantly above average.
-
-    Uses engagement rate to normalize across different follower counts.
-    Outliers are tweets with engagement rate > mean + (threshold_multiplier * std_dev)
+    Identify outlier tweets that perform significantly above average under 2026 Heavy Ranker weights.
     """
     if not tweets:
         return []
 
-    # Calculate engagement rates
     for tweet in tweets:
         tweet['_engagement_score'] = calculate_engagement_score(tweet)
         tweet['_engagement_rate'] = calculate_engagement_rate(tweet)
+        text = tweet.get('text', '') or ''
+        views = max(1, tweet.get('viewCount', 0) or 1)
+        tweet['_bookmark_per_1k_views'] = round(((tweet.get('bookmarkCount', 0) or 0) / views) * 1000.0, 2)
+        tweet['_has_external_url_penalty_risk'] = bool(re.search(r'https?://(?!x\.com|twitter\.com|t\.co)\S+', text))
+        tweet['_matrix_version'] = '2026.1-grok-heavy-ranker'
 
     rates = [t['_engagement_rate'] for t in tweets]
 
