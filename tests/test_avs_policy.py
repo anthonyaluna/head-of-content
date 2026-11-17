@@ -42,6 +42,19 @@ class EvidenceScoringTests(unittest.TestCase):
         self.assertIsNone(result['signals']['substantive_comments'])
         self.assertIsNone(result['signals']['dwell'])
 
+    def test_x_public_reply_and_bookmark_counts_keep_private_evidence_missing(self):
+        result = score_post({'viewCount': 1000, 'replyCount': 20,
+                             'bookmarkCount': 30, 'likeCount': 100}, 'x')
+        self.assertEqual(result['signals']['comments'], .02)
+        self.assertEqual(result['signals']['saves'], .03)
+        self.assertEqual(result['signals']['likes'], .1)
+        self.assertAlmostEqual(result['observed_contribution'], 1.38)
+        self.assertEqual(result['coverage'], .44)
+        self.assertIsNone(result['signals']['author_replies'])
+        self.assertIsNone(result['signals']['dwell'])
+        self.assertIsNone(result['score'])
+        self.assertEqual(result['status'], 'partial_evidence')
+
     def test_invalid_values_do_not_pass(self):
         for value in [True, -1, float('nan'), float('inf'), 65, '65%', 'unknown']:
             self.assertIsNone(score_post({'signals': {'completion': value}}, 'tiktok')['signals']['completion'])
