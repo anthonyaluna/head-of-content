@@ -55,6 +55,64 @@ class EvidenceScoringTests(unittest.TestCase):
         self.assertIsNone(result['score'])
         self.assertEqual(result['status'], 'partial_evidence')
 
+    def test_x_repost_and_quote_counts_supply_combined_evidence(self):
+        for reposts, quotes, expected in [(80, 10, .09), (0, 0, 0), ('1,000', '200', .12)]:
+            with self.subTest(reposts=reposts, quotes=quotes):
+                views = 10000 if isinstance(reposts, str) else 1000
+                result = score_post({'viewCount': views, 'retweetCount': reposts,
+                                     'quoteCount': quotes}, 'x')
+                self.assertEqual(result['signals']['reposts_quotes'], expected)
+                self.assertAlmostEqual(result['observed_contribution'], expected * 14)
+                self.assertEqual(result['coverage'], .14)
+                self.assertEqual(result['sources']['reposts_quotes']['numerator_sum'],
+                                 ('retweetCount', 'quoteCount'))
+                self.assertIsNone(result['score'])
+
+    def test_x_repost_sum_requires_both_valid_counts_and_exposure(self):
+        baseline = {'viewCount': 100, 'retweetCount': 10, 'quoteCount': 5}
+        for key in baseline:
+            missing = dict(baseline)
+            del missing[key]
+            with self.subTest(key=key, value='absent'):
+                self.assertIsNone(score_post(missing, 'x')['signals']['reposts_quotes'])
+            invalid_values = [None, True, -1, float('nan'), float('inf'), 'unknown']
+            if key == 'viewCount':
+                invalid_values.append(0)
+            for value in invalid_values:
+                with self.subTest(key=key, value=value):
+                    result = score_post(dict(baseline, **{key: value}), 'x')
+                    self.assertIsNone(result['signals']['reposts_quotes'])
+                    self.assertNotIn('reposts_quotes', result['sources'])
+        self.assertIsNone(score_post(dict(baseline, retweetCount=100), 'x')['signals']['reposts_quotes'])
+
+    def test_x_explicit_repost_signals_and_combined_counts_take_precedence(self):
+        baseline = {'viewCount': 100, 'retweetCount': 80, 'quoteCount': 10}
+        for value, expected in [(.2, .2), (0, 0), (None, None), ('unknown', None), (2, None)]:
+            with self.subTest(kind='normalized', value=value):
+                result = score_post(dict(baseline, repostsQuotesCount=30,
+                                         signals={'reposts_quotes': value}), 'x')
+                self.assertEqual(result['signals']['reposts_quotes'], expected)
+                if expected is not None:
+                    self.assertEqual(result['sources']['reposts_quotes'], 'signals.reposts_quotes')
+                else:
+                    self.assertNotIn('reposts_quotes', result['sources'])
+        for value, expected in [(30, .3), (0, 0), (None, None), ('unknown', None), (-1, None), (101, None)]:
+            with self.subTest(kind='combined_count', value=value):
+                result = score_post(dict(baseline, repostsQuotesCount=value), 'x')
+                self.assertEqual(result['signals']['reposts_quotes'], expected)
+                if expected is not None:
+                    self.assertEqual(result['sources']['reposts_quotes']['numerator_aliases'],
+                                     ('repostsQuotesCount',))
+                else:
+                    self.assertNotIn('reposts_quotes', result['sources'])
+
+    def test_x_provider_repost_counts_affect_outlier_selection(self):
+        posts = [{'id': i, 'viewCount': 100, 'retweetCount': n,
+                  'quoteCount': 0, 'format': 'text'} for i, n in enumerate([1]*9+[90])]
+        selected = identify_policy_outliers(posts, 'x')
+        self.assertEqual([post['id'] for post in selected], [9])
+        self.assertEqual(selected[0]['_comparison_count'], 10)
+
     def test_invalid_values_do_not_pass(self):
         for value in [True, -1, float('nan'), float('inf'), 65, '65%', 'unknown']:
             self.assertIsNone(score_post({'signals': {'completion': value}}, 'tiktok')['signals']['completion'])
@@ -83,6 +141,20 @@ class EvidenceScoringTests(unittest.TestCase):
         self.assertEqual(selected[0]['likesCount'], 90)
         self.assertEqual(selected[0]['_comparison_count'], 10)
         self.assertIsNone(selected[0]['_engagement_score'])
+
+    def test_outlier_cohorts_ignore_signal_representation_order(self):
+        for explicit_high in [False, True]:
+            with self.subTest(explicit_high=explicit_high):
+                posts = [{'id': i, 'views': 100, 'likeCount': 1,
+                          'commentCount': 1, 'format': 'video'} for i in range(5)]
+                posts.extend({'id': i, 'signals': {'likes': .01, 'comments': .01},
+                              'format': 'video'} for i in range(5, 9))
+                high = ({'signals': {'comments': .9, 'likes': .9}} if explicit_high
+                        else {'views': 100, 'likeCount': 90, 'commentCount': 90})
+                posts.append(dict(high, id=9, format='video'))
+                selected = identify_policy_outliers(posts, 'tiktok')
+                self.assertEqual([post['id'] for post in selected], [9])
+                self.assertEqual(selected[0]['_comparison_count'], 10)
 
     def test_export_formats_are_separate_cohorts(self):
         posts = [{"Impressions": 100, "Likes": 1, "Post Type": "text"} for _ in range(9)]

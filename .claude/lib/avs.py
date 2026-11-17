@@ -105,6 +105,19 @@ def score_post(post, platform, surface=None):
             if value is not None:
                 signals[name] = value
                 sources[name] = {"numerator_aliases": numerator, "denominator_aliases": denominator}
+    if platform == "x" and "reposts_quotes" not in supplied and "repostsQuotesCount" not in post:
+        # A partial sum would turn unavailable provider evidence into zero.
+        reposts = first(post, "retweetCount")
+        quotes = first(post, "quoteCount")
+        exposure = first(post, *denominator)
+        if reposts is not None and quotes is not None and exposure is not None and exposure > 0:
+            value = fraction((reposts + quotes) / exposure)
+            if value is not None:
+                signals["reposts_quotes"] = value
+                sources["reposts_quotes"] = {
+                    "numerator_sum": ("retweetCount", "quoteCount"),
+                    "denominator_aliases": denominator,
+                }
     missing = [name for name, value in signals.items() if value is None]
     covered = sum(weights[name] for name, value in signals.items() if value is not None)
     contribution = sum(weights[name] * value * 100 for name, value in signals.items() if value is not None)
@@ -153,7 +166,7 @@ def identify_policy_outliers(posts, platform, threshold_multiplier=2.0):
         post["_engagement_rate"] = None  # legacy key retained; AVS is not an engagement rate
         if result["observed_contribution"] is not None and media_format(post) is not None:
             key = (result["profile"], media_format(post),
-                   result["denominator"], tuple(result["sources"]))
+                   result["denominator"], tuple(sorted(result["sources"])))
             groups[key].append(post)
     selected = []
     for group in groups.values():
