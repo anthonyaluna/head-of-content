@@ -38,9 +38,9 @@ export $(cat .env | grep -v '^#' | xargs)
 
 ## Workflow
 
-### 1. Read User Context
+### 1. Read User & Brand Context
 
-Read all files in `.claude/context/` to understand the user's niche, target audience, and accounts to research. Pass this context to each subagent.
+Read all files in `.claude/context/` AND `.agents/product-marketing.md` (if present) to understand the principal's brand architecture, Ideal Client Profile (ICP), explicit Anti-Target filters, AEO regional entities, and accounts to research. Only use calibration after verifying provenance, platform/account, time window, missing fields, and cohort definitions. File existence is not proof. Never automatically load packaged synthetic reports or weights. Pass this context to each subagent, and run final recommended drafts through `content-qa-gate` before publishing.
 
 ### 2. Create Master Run Folder
 
@@ -204,7 +204,7 @@ To identify cross-platform winners:
 1. Extract keywords/hashtags from each platform's outliers
 2. Normalize terms (lowercase, remove # and @)
 3. Find intersection of high-frequency terms
-4. Score by combined engagement across platforms
+4. Compare within-platform evidence and summarize cross-platform patterns qualitatively. Do not sum heterogeneous counts or partial AVS contributions into a cross-platform performance claim.
 
 ## Quick Reference
 

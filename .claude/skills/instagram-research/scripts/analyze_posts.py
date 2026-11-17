@@ -9,6 +9,9 @@ import argparse
 import statistics
 from datetime import datetime
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import score_post, identify_policy_outliers
 from collections import Counter
 import re
 
@@ -19,50 +22,18 @@ def load_posts(input_path: str) -> list[dict]:
         return json.load(f)
 
 
-def calculate_engagement_score(post: dict) -> float:
-    """
-    Calculate weighted engagement score.
-    - Comments (3x): Active engagement
-    - Likes (1x): Passive approval
-    - Video views (0.1x): Weighted lower due to auto-play
-    """
-    likes = post.get('likesCount', 0) or 0
-    comments = post.get('commentsCount', 0) or 0
-    video_views = post.get('videoViewCount', 0) or post.get('videoPlayCount', 0) or 0
-    return likes + (3 * comments) + (0.1 * video_views)
+def calculate_engagement_score(post: dict):
+    """Full internal policy score, or None when weighted evidence is missing."""
+    return score_post(post, "instagram")["score"]
 
 
-def calculate_engagement_rate(post: dict) -> float:
-    """Calculate engagement rate relative to follower count."""
-    followers = post.get('ownerFollowersCount', 0) or 0
-    engagement = calculate_engagement_score(post)
-    if followers == 0:
-        return engagement
-    return (engagement / followers) * 100
+def calculate_engagement_rate(post: dict):
+    """Legacy interface: no composite AVS can be represented as an engagement rate."""
+    return None
 
 
 def identify_outliers(posts: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
-    """
-    Identify outlier posts with engagement rate > mean + (threshold × std_dev).
-    """
-    if not posts:
-        return []
-
-    for post in posts:
-        post['_engagement_score'] = calculate_engagement_score(post)
-        post['_engagement_rate'] = calculate_engagement_rate(post)
-
-    rates = [p['_engagement_rate'] for p in posts]
-    if len(rates) < 2:
-        return posts
-
-    mean_rate = statistics.mean(rates)
-    std_dev = statistics.stdev(rates) if len(rates) > 1 else 0
-    threshold = mean_rate + (threshold_multiplier * std_dev)
-
-    outliers = [p for p in posts if p['_engagement_rate'] > threshold]
-    outliers.sort(key=lambda x: x['_engagement_score'], reverse=True)
-    return outliers
+    return identify_policy_outliers(posts, "instagram", threshold_multiplier)
 
 
 def extract_topics(posts: list[dict]) -> dict:
@@ -133,6 +104,7 @@ def main():
         'generated': datetime.now().isoformat(),
         'total_posts': len(posts),
         'outlier_count': len(outliers),
+        "evidence": [p.get("_avs") for p in posts],
         'threshold': args.threshold,
         'topics': topics,
         'accounts': list(set(p.get('ownerUsername', '') for p in posts if p.get('ownerUsername'))),

@@ -9,6 +9,9 @@ import argparse
 import statistics
 from datetime import datetime
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import score_post, identify_policy_outliers
 from collections import Counter
 import re
 
@@ -19,54 +22,18 @@ def load_posts(input_path: str) -> list[dict]:
         return json.load(f)
 
 
-def calculate_engagement_score(video: dict) -> float:
-    """
-    Calculate weighted engagement score for TikTok.
-    - Comments (3x): Active engagement, hardest to get
-    - Shares (2x): Strong signal of value
-    - Saves/Collects (2x): Intent to revisit
-    - Likes/Diggs (1x): Passive approval
-    - Views/Plays (0.05x): Weighted lower due to auto-play
-    """
-    likes = video.get('diggCount', 0) or 0
-    comments = video.get('commentCount', 0) or 0
-    shares = video.get('shareCount', 0) or 0
-    saves = video.get('collectCount', 0) or 0
-    plays = video.get('playCount', 0) or 0
-    return likes + (3 * comments) + (2 * shares) + (2 * saves) + (0.05 * plays)
+def calculate_engagement_score(post: dict):
+    """Full internal policy score, or None when weighted evidence is missing."""
+    return score_post(post, "tiktok")["score"]
 
 
-def calculate_engagement_rate(video: dict) -> float:
-    """Calculate engagement rate relative to follower count."""
-    followers = video.get('authorFollowers', 0) or 0
-    engagement = calculate_engagement_score(video)
-    if followers == 0:
-        return engagement
-    return (engagement / followers) * 100
+def calculate_engagement_rate(post: dict):
+    """Legacy interface: no composite AVS can be represented as an engagement rate."""
+    return None
 
 
-def identify_outliers(videos: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
-    """
-    Identify outlier videos with engagement rate > mean + (threshold x std_dev).
-    """
-    if not videos:
-        return []
-
-    for video in videos:
-        video['_engagement_score'] = calculate_engagement_score(video)
-        video['_engagement_rate'] = calculate_engagement_rate(video)
-
-    rates = [v['_engagement_rate'] for v in videos]
-    if len(rates) < 2:
-        return videos
-
-    mean_rate = statistics.mean(rates)
-    std_dev = statistics.stdev(rates) if len(rates) > 1 else 0
-    threshold = mean_rate + (threshold_multiplier * std_dev)
-
-    outliers = [v for v in videos if v['_engagement_rate'] > threshold]
-    outliers.sort(key=lambda x: x['_engagement_score'], reverse=True)
-    return outliers
+def identify_outliers(posts: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
+    return identify_policy_outliers(posts, "tiktok", threshold_multiplier)
 
 
 def extract_topics(videos: list[dict]) -> dict:
@@ -151,6 +118,7 @@ def main():
         'generated': datetime.now().isoformat(),
         'total_videos': len(videos),
         'outlier_count': len(outliers),
+        "evidence": [p.get("_avs") for p in videos],
         'threshold': args.threshold,
         'topics': topics,
         'accounts': list(set(v.get('authorUsername', '') for v in videos if v.get('authorUsername'))),

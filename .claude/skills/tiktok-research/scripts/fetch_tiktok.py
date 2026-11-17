@@ -11,6 +11,9 @@ import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import infer_tiktok_format
+
 # Load .env file if present
 try:
     from dotenv import load_dotenv
@@ -106,12 +109,13 @@ def fetch_tiktok(
             'createTime': item.get('createTime'),
             'createTimeISO': item.get('createTimeISO'),
             'webVideoUrl': item.get('webVideoUrl'),
+            'format': infer_tiktok_format(item),
             # Engagement metrics
-            'diggCount': item.get('diggCount', 0),  # likes/hearts
-            'shareCount': item.get('shareCount', 0),
-            'playCount': item.get('playCount', 0),
-            'commentCount': item.get('commentCount', 0),
-            'collectCount': item.get('collectCount', 0),  # saves/bookmarks
+            'diggCount': item.get('diggCount'),  # likes/hearts
+            'shareCount': item.get('shareCount'),
+            'playCount': item.get('playCount'),
+            'commentCount': item.get('commentCount'),
+            'collectCount': item.get('collectCount'),  # saves/bookmarks
             # Author metadata
             'authorUsername': item.get('authorMeta', {}).get('name', ''),
             'authorNickname': item.get('authorMeta', {}).get('nickName', ''),
@@ -120,7 +124,7 @@ def fetch_tiktok(
             'authorHearts': item.get('authorMeta', {}).get('heart', 0),
             'authorVerified': item.get('authorMeta', {}).get('verified', False),
             # Video metadata
-            'videoDuration': item.get('videoMeta', {}).get('duration', 0),
+            'videoDuration': item.get('videoMeta', {}).get('duration'),
             'videoHeight': item.get('videoMeta', {}).get('height'),
             'videoWidth': item.get('videoMeta', {}).get('width'),
             'coverUrl': item.get('videoMeta', {}).get('coverUrl'),
@@ -128,7 +132,7 @@ def fetch_tiktok(
             'hashtags': item.get('hashtags', []),
             'mentions': item.get('mentions', []),
             'isPinned': item.get('isPinned', False),
-            'isAd': item.get('isAd', False),
+            'isAd': item.get('isAd'),
             # Music metadata
             'musicName': item.get('musicMeta', {}).get('musicName'),
             'musicAuthor': item.get('musicMeta', {}).get('musicAuthor'),

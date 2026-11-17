@@ -9,6 +9,9 @@ import argparse
 import statistics
 from datetime import datetime
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import score_post, identify_policy_outliers
 from collections import Counter
 import re
 
@@ -19,62 +22,18 @@ def load_posts(input_path: str) -> list[dict]:
         return json.load(f)
 
 
-def calculate_engagement_score(tweet: dict) -> float:
-    """
-    Calculate weighted engagement score for a tweet.
-
-    Weights:
-    - Bookmarks (4x): Highest signal - user saving for reference/action
-    - Replies (3x): Active conversation and engagement
-    - Retweets (2x): Amplification signal
-    - Quotes (2x): Engagement with commentary
-    - Likes (1x): Passive approval
-    """
-    likes = tweet.get('likeCount', 0) or 0
-    retweets = tweet.get('retweetCount', 0) or 0
-    replies = tweet.get('replyCount', 0) or 0
-    quotes = tweet.get('quoteCount', 0) or 0
-    bookmarks = tweet.get('bookmarkCount', 0) or 0
-
-    return likes + (2 * retweets) + (3 * replies) + (2 * quotes) + (4 * bookmarks)
+def calculate_engagement_score(post: dict):
+    """Full internal policy score, or None when weighted evidence is missing."""
+    return score_post(post, "x")["score"]
 
 
-def calculate_engagement_rate(tweet: dict) -> float:
-    """Calculate engagement rate relative to follower count."""
-    followers = tweet.get('author', {}).get('followers', 1) or 1
-    engagement = calculate_engagement_score(tweet)
-    return (engagement / followers) * 100
+def calculate_engagement_rate(post: dict):
+    """Legacy interface: no composite AVS can be represented as an engagement rate."""
+    return None
 
 
-def identify_outliers(tweets: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
-    """
-    Identify outlier tweets that perform significantly above average.
-
-    Uses engagement rate to normalize across different follower counts.
-    Outliers are tweets with engagement rate > mean + (threshold_multiplier * std_dev)
-    """
-    if not tweets:
-        return []
-
-    # Calculate engagement rates
-    for tweet in tweets:
-        tweet['_engagement_score'] = calculate_engagement_score(tweet)
-        tweet['_engagement_rate'] = calculate_engagement_rate(tweet)
-
-    rates = [t['_engagement_rate'] for t in tweets]
-
-    if len(rates) < 2:
-        return tweets
-
-    mean_rate = statistics.mean(rates)
-    std_dev = statistics.stdev(rates) if len(rates) > 1 else 0
-
-    threshold = mean_rate + (threshold_multiplier * std_dev)
-
-    outliers = [t for t in tweets if t['_engagement_rate'] > threshold]
-    outliers.sort(key=lambda x: x['_engagement_score'], reverse=True)
-
-    return outliers
+def identify_outliers(posts: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
+    return identify_policy_outliers(posts, "x", threshold_multiplier)
 
 
 def extract_topics(tweets: list[dict]) -> dict:
@@ -166,8 +125,9 @@ def slim_outlier(tweet: dict) -> dict:
             'bookmarks': tweet.get('bookmarkCount', 0),
             'views': tweet.get('viewCount', 0),
         },
-        'engagement_score': tweet.get('_engagement_score', 0),
-        'engagement_rate': round(tweet.get('_engagement_rate', 0), 2),
+        'engagement_score': tweet.get('_engagement_score'),
+        'avs': tweet.get('_avs'),
+        'engagement_rate': tweet.get('_engagement_rate'),
         'author': {
             'username': author.get('userName', ''),
             'name': author.get('name', ''),
@@ -263,6 +223,7 @@ def main():
         'generated': datetime.now().isoformat(),
         'total_posts': len(tweets),
         'outlier_count': len(outliers),
+        "evidence": [p.get("_avs") for p in tweets],
         'threshold': args.threshold,
         'topics': topics,
         'content_patterns': patterns,

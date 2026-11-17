@@ -18,6 +18,13 @@ description: |
 
 Analyze short-form videos with Gemini AI to extract hooks, content structure, delivery style, and CTA strategies.
 
+## Evidence-aware v2.1 policy
+
+Read `.claude/lib/SCORING.md` and `.claude/lib/social_policy_2026.json` before interpreting results. The weights and targets are user-supplied policy, not official ranking coefficients. Use actual platform metrics with their units, denominator, window, and source. Missing private sends, saves, completion, dwell, or satisfaction remain null. An AI video inspection supplies creative observations, never measured viewer behavior. Retain every `_avs` coverage record even when no outlier can be established. Compare like-format, like-coverage cohorts only. Do not infer non-follower reach from plays/followers or public shares.
+
+The shared `.claude/lib` directory must accompany these repository skills when distributed. The legacy root `.skill` archives are older snapshots and must not be used to install this v2.1 revision. Use the current source directories together.
+
+
 ## Prerequisites
 
 - `GEMINI_API_KEY` environment variable

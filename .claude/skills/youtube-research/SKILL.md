@@ -21,6 +21,13 @@ description: |
 
 Research high-performing YouTube outlier videos, analyze top content with AI, and generate actionable reports.
 
+## Evidence-aware v2.1 policy
+
+Read `.claude/lib/SCORING.md` and `.claude/lib/social_policy_2026.json` before interpreting results. The weights and targets are user-supplied policy, not official ranking coefficients. Use actual platform metrics with their units, denominator, window, and source. Missing private sends, saves, completion, dwell, or satisfaction remain null. An AI video inspection supplies creative observations, never measured viewer behavior. Retain every `_avs` coverage record even when no outlier can be established. Compare like-format, like-coverage cohorts only. Do not infer non-follower reach from plays/followers or public shares.
+
+The shared `.claude/lib` directory must accompany these repository skills when distributed. The legacy root `.skill` archives are older snapshots and must not be used to install this v2.1 revision. Use the current source directories together.
+
+
 ## Prerequisites
 
 - `TUBELAB_API_KEY` environment variable. Get key from https://tubelab.net/settings/api
@@ -215,8 +222,6 @@ python .claude/skills/youtube-research/scripts/find_outliers.py --keywords K1 K2
 
 Output: `outliers.json`, `report.md`, `thumbnails/`, `transcripts/`
 
-## Scoring Algorithm
+## Discovery and policy evidence
 
-Videos ranked by: `zScore × recency_boost`
-- **zScore**: How much video outperforms its channel average
-- **recency_boost**: 1.0 for today, decays 5%/day (min 0.3×)
+Provider `zScore` orders discovery candidates. Owned audience signals use the separate v2026.11 policy in `.claude/lib/social_policy_2026.json`. Do not infer satisfaction from likes/comments, subscriber counts, or recency. Report missing format and missing analytics explicitly; provider zScore is not a 0–100 algorithm score.

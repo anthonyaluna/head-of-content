@@ -34,18 +34,22 @@ All skills live in `.claude/skills/` and follow a consistent pattern:
 ### Research Skills (platform-specific)
 Each creates timestamped run folders with `raw.json` → `outliers.json` → `video-analysis.json` → `report.md`:
 
-- **x-research**: Fetches tweets via Apify, identifies engagement outliers
-- **instagram-research**: Fetches reels via Apify, identifies outliers, analyzes top 5 videos
-- **youtube-research**: Uses TubeLab API for outlier detection, analyzes top 3 relevant videos
-- **tiktok-research**: Fetches TikToks via Apify, identifies outliers, analyzes top 5 videos
+- **x-research**: Fetches tweets via Apify and compares available policy signals within matched evidence cohorts
+- **instagram-research**: Fetches reels/carousels via Apify and compares connected or unconnected policy evidence; unavailable private sends and retention stay missing
+- **youtube-research**: Uses TubeLab provider zScore for discovery, with separate coverage-aware owned-analytics scoring, analyzes top 3 relevant videos
+- **tiktok-research**: Fetches TikToks via Apify, preserves verified format metadata, and compares available signals without inferring completion or rewatch
+- **linkedin-research**: Analyzes LinkedIn Creator `.xlsx`/`.csv` exports or JSON feeds using the user-supplied v2026.11 policy with explicit missing-signal coverage
 
-### Support Skills
-- **video-content-analyzer**: Gemini AI analysis of video hooks, structure, and CTAs. Used by all research skills.
-- **content-planner**: Orchestrates all 4 research skills in parallel, aggregates into content ideas and platform playbooks
+### Support, Calibration & QA Gate Skills
+- **video-content-analyzer**: Gemini AI analysis of 0–3s hook hold mechanics, 3–5s visual shift cadence, Tri-Modal SEO (spoken + OCR + caption), loop bridges, and Video Editor QA score.
+- **content-planner**: Orchestrates all 5 platform research skills in parallel, checks `.agents/product-marketing.md` for ICP/Anti-ICP alignment, and aggregates into content ideas and platform playbooks.
+- **historical-calibrator**: Stages selected CSV/XLS/XLSX exports, records input hashes, verifies ingest coverage, and runs the explicitly selected canonical engine in an isolated database. ZIP/JSON require canonical harvesting first. Output needs provenance and coverage review before use.
+- **content-qa-gate**: Pre-publish EOS Content Team Accountability Gate (Strategist, Video Editor, and Distribution seats), ICP/Anti-ICP & AEO Entity Scorer, Trial Reel SOP, and `Content-to-Clients` multi-asset atomizer.
 
 ## Context Files
 
-Configure research targets in `.claude/context/`:
+Configure research targets in `.claude/context/` (user-managed; never overwrite automatically) and brand/ICP context in `.agents/product-marketing.md`:
+- `.agents/product-marketing.md` - Principal brand architecture, Ideal Client Profile (ICP), Anti-Target filters, AEO regional clusters, and compliance guardrails
 - `x-accounts.md` - X/Twitter handles to monitor
 - `instagram-accounts.md` - Instagram accounts to track
 - `tiktok-accounts.md` - TikTok accounts to track
@@ -82,13 +86,25 @@ python3 .claude/skills/youtube-research/scripts/get_channel_videos.py CHANNEL_ID
 python3 .claude/skills/youtube-research/scripts/find_outliers.py --keywords k1 k2 k3 k4 --adjacent-keywords a1 a2 a3 a4 --output-dir {folder}
 ```
 
-## Engagement Scoring
+Historical Calibration & Pre-Publish EOS Team QA Gate:
+```bash
+python3 .claude/skills/historical-calibrator/scripts/calibrate_exports.py --export-dir ~/Downloads/social_exports --run-dir ~/calibration-new-run --canonical-root /path/to/coastline-codex-agent-os
+python3 .claude/skills/content-qa-gate/scripts/run_qa_gate.py qa --input draft.json --canonical-root /path/to/coastline-codex-agent-os
+```
 
-- **X**: Bookmarks 4x, Replies 3x, Retweets 2x, Quotes 2x, Likes 1x
-- **Instagram/TikTok**: Likes + 3×Comments + engagement bonuses for shares/saves/views
-- **YouTube**: zScore × recency_boost (5%/day decay)
+## v2026.11 internal policy and evidence
 
-Outlier threshold: engagement rate > mean + (2.0 × std_dev)
+Read `.claude/lib/SCORING.md` and `.claude/lib/social_policy_2026.json`. The JSON records exact user-supplied signal weights, format multipliers, targets, and penalties. These are operating assumptions, not official platform coefficients or the private empirical backtest.
+
+Research scripts use coverage-aware signal contributions. Missing retention, sends, saves, dwell, or satisfaction remain null; no follower-count substitute for reach and no likes-as-watch-time proxy. Full AVS is withheld when incomplete. YouTube provider zScore is separate discovery evidence. LinkedIn 360Brew is a legacy internal label, not the current deployed ranker.
+
+Canonical QA / atomization requires an explicit reviewed Coastline checkout:
+```bash
+python .claude/skills/content-qa-gate/scripts/run_qa_gate.py qa --input draft.json --canonical-root /path/to/coastline-codex-agent-os
+python .claude/skills/historical-calibrator/scripts/calibrate_exports.py --export-dir /path/to/exports --run-dir /path/to/new-run --canonical-root /path/to/coastline-codex-agent-os
+```
+
+Do not use a packaged synthetic historical report as Anthony's data. No auto-publication follows from a numeric score. `.claude/context/*` stays user-owned and untouched.
 
 ## Delegation Mode
 

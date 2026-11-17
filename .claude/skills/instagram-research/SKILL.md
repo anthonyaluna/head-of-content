@@ -22,6 +22,13 @@ description: |
 
 Research high-performing Instagram posts and reels, identify outliers, and analyze top video content for hooks and structure.
 
+## Evidence-aware v2.1 policy
+
+Read `.claude/lib/SCORING.md` and `.claude/lib/social_policy_2026.json` before interpreting results. The weights and targets are user-supplied policy, not official ranking coefficients. Use actual platform metrics with their units, denominator, window, and source. Missing private sends, saves, completion, dwell, or satisfaction remain null. An AI video inspection supplies creative observations, never measured viewer behavior. Retain every `_avs` coverage record even when no outlier can be established. Compare like-format, like-coverage cohorts only. Do not infer non-follower reach from plays/followers or public shares.
+
+The shared `.claude/lib` directory must accompany these repository skills when distributed. The legacy root `.skill` archives are older snapshots and must not be used to install this v2.1 revision. Use the current source directories together.
+
+
 ## Prerequisites
 
 - `APIFY_TOKEN` environment variable or in `.env`
@@ -115,7 +122,7 @@ Generated: {date}
 
 ## Top Performing Hooks
 
-Ranked by engagement. Use these formulas for your content.
+Ranked by comparable observed policy contribution. Describe creative hypotheses, not guaranteed formulas.
 
 ### Hook 1: {technique} - @{username}
 - **Opening**: "{opening_line}"
@@ -140,7 +147,7 @@ Ranked by engagement. Use these formulas for your content.
 
 ## All Outliers
 
-| Rank | Username | Likes | Comments | Views | Engagement Rate |
+| Rank | Username | Likes | Comments | Views | AVS contribution / coverage |
 |------|----------|-------|----------|-------|-----------------|
 [List all outliers with metrics and links]
 
@@ -174,10 +181,7 @@ python3 .claude/skills/video-content-analyzer/scripts/analyze_videos.py -i "$RUN
 
 Then read both JSON files and generate the report.
 
-## Engagement Metrics
+## Evidence and outlier scoring
 
-**Engagement Score**: `likes + (3 × comments) + (0.1 × views)`
-
-**Outlier Detection**: Posts with engagement rate > mean + (threshold × std_dev)
-
-**Engagement Rate**: (score / followers) × 100
+Use the exact v2026.11 signal weights in `.claude/lib/social_policy_2026.json`.
+Report `_avs.score` only if complete, otherwise report `_avs.observed_contribution` as partial with coverage and missing signals. Outliers exceed the mean plus the chosen standard-deviation multiple within an identical-coverage/format cohort of at least three records. This descriptive statistic does not prove a causal content tactic. Do not call the weighted score an engagement rate or divide it by follower count.
