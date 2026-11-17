@@ -91,7 +91,7 @@ Analyze the video and return a JSON object with this exact structure:
         "technique": "<one of: pattern-interrupt, question, bold-claim, story-tease, visual-shock, curiosity-gap, direct-address, controversial-take, relatable-pain, transformation-preview>",
         "opening_line": "<exact words or description of what's said/shown in first 3 seconds>",
         "first_frame_visual_anchor": "<what visually stops the swipe in frame 0.0-1.5s>",
-        "attention_grab": "<why this hook beats the 3-second Viewed-vs-Swiped-Away gate>",
+        "attention_grab": "<observed first-three-second mechanics and a clearly labeled retention hypothesis>",
         "replicable_formula": "<template version of this hook that could be adapted, e.g. 'If you [action], you're [consequence]'>"
     }},
     "content_structure": {{
@@ -106,10 +106,10 @@ Analyze the video and return a JSON object with this exact structure:
         "pacing": "<one of: rapid-fire, fast, moderate, slow>",
         "avg_seconds_between_visual_shifts": <estimated number of seconds between cuts/b-roll/zoom changes>,
         "has_seamless_loop_bridge": <true/false>,
-        "retention_techniques": ["<list techniques used to pass the 70% completion gate>"]
+        "retention_techniques": ["<observed techniques; do not infer actual completion from video content>"]
     }},
     "trimodal_seo": {{
-        "spoken_keywords_first_5s": ["<keywords spoken aloud in opening>"],
+        "spoken_keywords_first_3s": ["<keywords spoken aloud in opening>"],
         "onscreen_ocr_keywords": ["<keywords visible in burned-in text overlays>"],
         "trimodal_alignment_score_10": <1-10 rating of alignment across spoken audio, OCR text, and caption>
     }},
@@ -130,8 +130,10 @@ Analyze the video and return a JSON object with this exact structure:
         "cta_text": "<exact CTA if present>",
         "placement": "<where in video the CTA appears>"
     }},
-    "why_it_works": "<2-3 sentence analysis of why this content triggers DM Sends, Saves, or high Completion>"
+    "why_it_works": "<2-3 sentence creative hypothesis; actual sends, saves, hold and completion require platform analytics>"
 }}
+
+Policy targets are internal targets, not measured results. TikTok completion target is 70%, Instagram Reels 65%. Inspect the 0–3s hook, 3–5s visual shifts, legibility, watermark, loop, and spoken/OCR/caption keyword agreement. Return null for anything not observable. Never manufacture viewer retention, DM sends, satisfaction, or pass a distribution gate from a video inspection.
 
 Focus on ACTIONABLE insights that could be replicated by a founder and video editor.
 Return ONLY valid JSON, no other text.'''
@@ -170,8 +172,8 @@ def extract_post_data(post: dict, platform: str) -> dict:
         "likes": get_field(post, mapping["likes"], 0) or 0,
         "comments": get_field(post, mapping["comments"], 0) or 0,
         "views": get_field(post, mapping["views"], 0) or 0,
-        "engagement_score": post.get('_engagement_score', 0),
-        "engagement_rate": post.get('_engagement_rate', 0),
+        "engagement_score": post.get('_engagement_score'),
+        "engagement_rate": post.get('_engagement_rate'),
     }
 
 

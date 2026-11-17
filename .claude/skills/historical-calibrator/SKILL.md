@@ -1,25 +1,19 @@
 ---
 name: historical-calibrator
-description: |
-  Ingest multi-year Meta (Facebook/Instagram JSON/ZIP & Business Suite CSV),
-  LinkedIn (Creator Analytics XLSX/CSV & Archive Shares.csv), and Metricool CSV exports
-  to deduplicate overlapping records, detect 2021-2024 vs 2025-2026 algorithm regime shifts,
-  and calibrate Empirical Bayes format, hook, and publish-hour multipliers.
+description: Run the canonical Coastline social-data-calibrator on explicitly selected CSV/XLS/XLSX exports in an isolated directory. Use for historical benchmarking and backtests with source hashes and honest coverage limitations.
 ---
 
-# Historical Social Export Calibrator
+# Historical export calibration
 
-Bridges `head-of-content` directly with the Social Intelligence Engine (`~/.gemini/skills/social-data-calibrator/scripts/engine/cli.py` or `SOCIAL_ENGINE_ROOT`) to calibrate platform scoring weights from your actual multi-year historical data.
-
-## Supported Historical Exports
-1. **Meta Account Information ZIP/JSON** (auto-repairs UTF-8/Latin-1 Mojibake & joins `past_instagram_insights`) + **Meta Business Suite CSV**.
-2. **LinkedIn Creator Analytics `.xlsx` / `.csv`** (skips metadata preamble rows automatically) + **LinkedIn Data Archive `Shares.csv`**.
-3. **Metricool Multi-Network CSV** (comma & semicolon dialects across IG, FB, LinkedIn, TikTok, X, YouTube).
-
-## Workflow
+Read `.claude/lib/SCORING.md`. Select the reviewed canonical checkout explicitly. Preserve private exports outside Git and create a new run directory outside the source export folder:
 
 ```bash
-python3 .claude/skills/historical-calibrator/scripts/calibrate_exports.py \
-  --export-dir ~/Downloads/social_exports \
-  --output content-plans/calibrated_intelligence_report.json
+python .claude/skills/historical-calibrator/scripts/calibrate_exports.py \
+  --export-dir /path/to/verified-exports \
+  --run-dir /path/to/new-calibration-run \
+  --canonical-root /path/to/coastline-codex-agent-os
 ```
+
+The wrapper copies supported input files, records SHA-256 hashes, and calls canonical `ingest` and `analyze` with an isolated database. Existing run directories are rejected. JSON/ZIP archives require the canonical harvesting workflow first. A completed command is not proof of authentic inputs, correct missing-value handling, or causal prediction.
+
+Before applying results, verify platform/account, dates, metric definitions, paid/trial/collaboration status, duplicate coverage, and cohort sizes. Distinguish unavailable metrics from zero. Preserve source limitations even where a legacy importer emits zeros. Never autoload a report solely because its filename looks calibrated. The packaged 235 synthetic posts are test data, not Anthony's platform history. Empirical, synthetic, and editorial-policy evidence remain separate.

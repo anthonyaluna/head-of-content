@@ -9,6 +9,9 @@ import argparse
 import statistics
 from datetime import datetime
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import score_post, identify_policy_outliers
 from collections import Counter
 import re
 
@@ -19,94 +22,18 @@ def load_posts(input_path: str) -> list[dict]:
         return json.load(f)
 
 
-def calculate_engagement_score(post: dict) -> float:
-    """
-    Calculate 2026 Instagram Dual-Mode Algorithmic Value Score (AVS) raw weighted engagement.
-    2026 Mosseri Ranking Priorities:
-    1. Watch Time / Completion Velocity (Unconnected Reels/Explore primary gate)
-    2. DM Sends / Reshares per Reach (~5x weight — #1 Unconnected expansion signal)
-    3. Saves / Bookmarks per Reach (~4x weight — #1 Connected Feed retention signal)
-    4. Substantive Comments (~3x weight)
-    5. Likes (~1x weight — passive approval)
-    Penalties:
-    - Reels > 180s excluded from non-follower Explore/Reels recommendation pools (0.72x)
-    - > 5 hashtags triggers 2026 hashtag-stuffing classifier demotion (0.85x)
-    """
-    likes = post.get('likesCount', 0) or 0
-    comments = post.get('commentsCount', 0) or 0
-    shares = (
-        post.get('sharesCount')
-        or post.get('reshareCount')
-        or post.get('sendCount')
-        or 0
-    )
-    saves = post.get('savesCount') or post.get('collectCount') or 0
-    video_views = post.get('videoViewCount', 0) or post.get('videoPlayCount', 0) or 0
-    duration = float(post.get('videoDuration') or post.get('duration') or 0)
-    caption = post.get('caption', '') or ''
-    tag_count = len(post.get('hashtags') or re.findall(r'#(\w+)', caption))
-
-    weighted = (
-        likes
-        + (3.0 * comments)
-        + (5.0 * shares)
-        + (4.0 * saves)
-        + (0.12 * video_views)
-    )
-    penalty_mult = 1.0
-    if duration > 180:
-        penalty_mult *= 0.72
-    if tag_count > 5:
-        penalty_mult *= 0.85
-    return round(weighted * penalty_mult, 2)
+def calculate_engagement_score(post: dict):
+    """Full internal policy score, or None when weighted evidence is missing."""
+    return score_post(post, "instagram")["score"]
 
 
-def calculate_engagement_rate(post: dict) -> float:
-    """
-    Calculate 2026 exposure-normalized engagement & Unconnected Reach velocity rate.
-    Blends Reach/Play-normalized action density (60%) with Follower breakout velocity (40%)
-    so non-follower Reels breakouts and high-save carousels are surfaced accurately.
-    """
-    followers = post.get('ownerFollowersCount', 0) or 0
-    plays = post.get('videoPlayCount', 0) or post.get('videoViewCount', 0) or post.get('reach', 0) or 0
-    engagement = calculate_engagement_score(post)
-
-    denom_followers = max(followers, 100) if followers > 0 else max(plays, 100)
-    follower_rate = (engagement / denom_followers) * 100.0
-
-    if plays > 0:
-        play_rate = (engagement / max(plays, 100)) * 100.0
-        unconnected_breakout = min(3.0, plays / max(denom_followers, 1))
-        return round((0.55 * play_rate + 0.45 * follower_rate) * (0.85 + 0.15 * unconnected_breakout), 3)
-    return round(follower_rate, 3)
+def calculate_engagement_rate(post: dict):
+    """Legacy interface: no composite AVS can be represented as an engagement rate."""
+    return None
 
 
 def identify_outliers(posts: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
-    """
-    Identify outlier posts with 2026 AVS engagement rate > mean + (threshold × std_dev).
-    """
-    if not posts:
-        return []
-
-    for post in posts:
-        post['_engagement_score'] = calculate_engagement_score(post)
-        post['_engagement_rate'] = calculate_engagement_rate(post)
-        followers = max(1, post.get('ownerFollowersCount', 0) or 1)
-        plays = post.get('videoPlayCount', 0) or post.get('videoViewCount', 0) or 0
-        post['_unconnected_reach_ratio'] = round(plays / followers, 2) if plays else 0.0
-        post['_matrix_version'] = '2026.1-dual-mode-sends-saves'
-
-    rates = [p['_engagement_rate'] for p in posts]
-    if len(rates) < 2:
-        return posts
-
-    mean_rate = statistics.mean(rates)
-    std_dev = statistics.stdev(rates) if len(rates) > 1 else 0
-    threshold = mean_rate + (threshold_multiplier * std_dev)
-
-    outliers = [p for p in posts if p['_engagement_rate'] > threshold]
-    outliers.sort(key=lambda x: x['_engagement_score'], reverse=True)
-    return outliers
+    return identify_policy_outliers(posts, "instagram", threshold_multiplier)
 
 
 def extract_topics(posts: list[dict]) -> dict:
@@ -177,6 +104,7 @@ def main():
         'generated': datetime.now().isoformat(),
         'total_posts': len(posts),
         'outlier_count': len(outliers),
+        "evidence": [p.get("_avs") for p in posts],
         'threshold': args.threshold,
         'topics': topics,
         'accounts': list(set(p.get('ownerUsername', '') for p in posts if p.get('ownerUsername'))),

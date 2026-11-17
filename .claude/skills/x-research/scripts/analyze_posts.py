@@ -9,6 +9,9 @@ import argparse
 import statistics
 from datetime import datetime
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import score_post, identify_policy_outliers
 from collections import Counter
 import re
 
@@ -19,78 +22,18 @@ def load_posts(input_path: str) -> list[dict]:
         return json.load(f)
 
 
-def calculate_engagement_score(tweet: dict) -> float:
-    """
-    Calculate 2026 X (Twitter) Grok / Heavy Ranker weighted engagement score.
-
-    2026 Heavy Ranker Calibrated Weights:
-    - Replies (13.5x; up to ~75x when author replies in thread): #1 conversation depth driver
-    - Bookmarks (10.0x): Private high-intent save & dwell proxy
-    - Quotes (8.0x): Commentary amplification into new graphs
-    - Retweets (6.0x): Direct amplification
-    - Likes (1.0x): Baseline passive signal
-    """
-    likes = tweet.get('likeCount', 0) or 0
-    retweets = tweet.get('retweetCount', 0) or 0
-    replies = tweet.get('replyCount', 0) or 0
-    quotes = tweet.get('quoteCount', 0) or 0
-    bookmarks = tweet.get('bookmarkCount', 0) or 0
-
-    return round(
-        likes
-        + (6.0 * retweets)
-        + (13.5 * replies)
-        + (8.0 * quotes)
-        + (10.0 * bookmarks),
-        2,
-    )
+def calculate_engagement_score(post: dict):
+    """Full internal policy score, or None when weighted evidence is missing."""
+    return score_post(post, "x")["score"]
 
 
-def calculate_engagement_rate(tweet: dict) -> float:
-    """
-    Calculate 2026 X view-and-follower blended engagement rate.
-    Accounts for impression efficiency (bookmarks + replies per view) alongside follower breakout.
-    """
-    followers = tweet.get('author', {}).get('followers', 1) or 1
-    views = tweet.get('viewCount', 0) or 0
-    engagement = calculate_engagement_score(tweet)
-    follower_rate = (engagement / max(followers, 50)) * 100.0
-    if views > 0:
-        view_rate = (engagement / max(views, 100)) * 100.0
-        return round((0.60 * view_rate) + (0.40 * follower_rate), 3)
-    return round(follower_rate, 3)
+def calculate_engagement_rate(post: dict):
+    """Legacy interface: no composite AVS can be represented as an engagement rate."""
+    return None
 
 
-def identify_outliers(tweets: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
-    """
-    Identify outlier tweets that perform significantly above average under 2026 Heavy Ranker weights.
-    """
-    if not tweets:
-        return []
-
-    for tweet in tweets:
-        tweet['_engagement_score'] = calculate_engagement_score(tweet)
-        tweet['_engagement_rate'] = calculate_engagement_rate(tweet)
-        text = tweet.get('text', '') or ''
-        views = max(1, tweet.get('viewCount', 0) or 1)
-        tweet['_bookmark_per_1k_views'] = round(((tweet.get('bookmarkCount', 0) or 0) / views) * 1000.0, 2)
-        tweet['_has_external_url_penalty_risk'] = bool(re.search(r'https?://(?!x\.com|twitter\.com|t\.co)\S+', text))
-        tweet['_matrix_version'] = '2026.1-grok-heavy-ranker'
-
-    rates = [t['_engagement_rate'] for t in tweets]
-
-    if len(rates) < 2:
-        return tweets
-
-    mean_rate = statistics.mean(rates)
-    std_dev = statistics.stdev(rates) if len(rates) > 1 else 0
-
-    threshold = mean_rate + (threshold_multiplier * std_dev)
-
-    outliers = [t for t in tweets if t['_engagement_rate'] > threshold]
-    outliers.sort(key=lambda x: x['_engagement_score'], reverse=True)
-
-    return outliers
+def identify_outliers(posts: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
+    return identify_policy_outliers(posts, "x", threshold_multiplier)
 
 
 def extract_topics(tweets: list[dict]) -> dict:
@@ -182,8 +125,9 @@ def slim_outlier(tweet: dict) -> dict:
             'bookmarks': tweet.get('bookmarkCount', 0),
             'views': tweet.get('viewCount', 0),
         },
-        'engagement_score': tweet.get('_engagement_score', 0),
-        'engagement_rate': round(tweet.get('_engagement_rate', 0), 2),
+        'engagement_score': tweet.get('_engagement_score'),
+        'avs': tweet.get('_avs'),
+        'engagement_rate': tweet.get('_engagement_rate'),
         'author': {
             'username': author.get('userName', ''),
             'name': author.get('name', ''),
@@ -279,6 +223,7 @@ def main():
         'generated': datetime.now().isoformat(),
         'total_posts': len(tweets),
         'outlier_count': len(outliers),
+        "evidence": [p.get("_avs") for p in tweets],
         'threshold': args.threshold,
         'topics': topics,
         'content_patterns': patterns,

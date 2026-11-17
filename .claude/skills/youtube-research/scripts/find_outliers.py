@@ -14,6 +14,9 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import score_post, number
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -106,41 +109,11 @@ def search_outliers(queries: list[str], api_key: str, days_back: int = 30, min_v
 
 
 def score_video(video: dict) -> float:
-    """
-    Calculate a 2026 composite YouTube outlier & satisfaction score.
-    Balances channel-relative zScore, recency, non-subscriber breakout velocity,
-    and post-watch satisfaction density (likes + 4x comments per view).
-    """
-    stats = video.get("statistics", {})
-    z_score = stats.get("zScore", 0) or 0
-    views = float(stats.get("viewCount", 0) or 0)
-    likes = float(stats.get("likeCount", 0) or 0)
-    comments = float(stats.get("commentCount", 0) or 0)
-    subs = float((video.get("channel", {}) or {}).get("subscriberCount", 0) or stats.get("subscriberCount", 0) or 0)
-
-    snippet = video.get("snippet", {})
-    published_at = snippet.get("publishedAt", "")
-
-    recency_boost = 1.0
-    if published_at:
-        try:
-            pub_date = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-            days_old = (datetime.now(pub_date.tzinfo) - pub_date).days
-            recency_boost = max(0.35, 1.0 - (days_old * 0.04))
-        except (ValueError, TypeError):
-            pass
-
-    breakout_boost = 1.0
-    if views > 0 and subs > 0:
-        ratio = views / max(subs, 100.0)
-        breakout_boost = min(1.45, max(0.9, 0.85 + 0.15 * (ratio ** 0.35)))
-
-    satisfaction_boost = 1.0
-    if views >= 500:
-        sat_rate = (likes + 4.0 * comments) / views
-        satisfaction_boost = min(1.30, max(0.9, 0.92 + sat_rate * 2.2))
-
-    return round(z_score * recency_boost * breakout_boost * satisfaction_boost, 3)
+    """Keep provider discovery ranking separate from unavailable audience signals."""
+    video["_avs"] = score_post(video, "youtube")
+    z_score = number((video.get("statistics") or {}).get("zScore"))
+    video["_discovery_basis"] = "provider_zScore_only_not_satisfaction_or_AVS"
+    return z_score if z_score is not None else 0.0
 
 
 def download_thumbnail(video: dict, output_dir: Path):
@@ -483,7 +456,9 @@ def main():
             "viewCount": stats.get("viewCount", 0),
             "likeCount": stats.get("likeCount", 0),
             "commentCount": stats.get("commentCount", 0),
-            "zScore": stats.get("zScore", 0),
+            "zScore": stats.get("zScore"),
+            "avs": video.get("_avs"),
+            "discovery_basis": video.get("_discovery_basis"),
             "publishedAt": snippet.get("publishedAt", ""),
             "channelSubs": channel.get("subscribersCount", 0),
             "transcript_path": str(transcripts_dir / f"{video_id}.txt") if (transcripts_dir / f"{video_id}.txt").exists() else None,

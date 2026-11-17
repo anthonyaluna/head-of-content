@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Identify outlier LinkedIn posts using the 2026 LinkedIn 360Brew ranking matrix.
+Identify LinkedIn outliers using the user-supplied policy (legacy 360Brew label).
 Supports Apify/JSON post arrays, LinkedIn Creator Analytics .csv, and multi-sheet .xlsx exports.
 """
 
@@ -12,6 +12,9 @@ import csv
 from datetime import datetime
 import json
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from avs import score_post, identify_policy_outliers
 import re
 import statistics
 
@@ -64,18 +67,6 @@ def load_linkedin_records(input_path: str) -> list[dict]:
     raise ValueError(f"Unsupported LinkedIn file format: {suf}")
 
 
-def _num(val) -> float:
-    if val is None:
-        return 0.0
-    if isinstance(val, (int, float)):
-        return float(val)
-    cleaned = re.sub(r"[^0-9.\-]", "", str(val))
-    try:
-        return float(cleaned) if cleaned else 0.0
-    except ValueError:
-        return 0.0
-
-
 def _text(post: dict) -> str:
     for k in ("text", "commentary", "Post Title", "Post title", "ShareCommentary", "caption", "content"):
         if post.get(k):
@@ -83,62 +74,18 @@ def _text(post: dict) -> str:
     return ""
 
 
-def calculate_360brew_score(post: dict) -> float:
-    """
-    2026 LinkedIn 360Brew Weighted Engagement & Dwell Score:
-    - Comments (8.0x): Substantive professional discussion is the #1 feed multiplier
-    - Reposts / Shares (6.0x): Second-degree network graph expansion
-    - Saves / Document Clicks (4.5x): Dwell-time proxy ("See more" & PDF slide swipes)
-    - Reactions / Likes (1.0x): Passive approval
-    Modifiers:
-    - Document / Carousel format: 1.34x dwell boost
-    - External URL in body: 0.78x reach suppression flag
-    """
-    likes = _num(post.get("numLikes") or post.get("likes") or post.get("Likes") or post.get("Reactions"))
-    comments = _num(post.get("numComments") or post.get("comments") or post.get("Comments"))
-    shares = _num(post.get("numShares") or post.get("reposts") or post.get("Reposts") or post.get("Shares"))
-    saves = _num(post.get("Saves") or post.get("saves") or 0)
-    clicks = _num(post.get("clicks") or post.get("Clicks") or 0)
-    impressions = _num(post.get("impressions") or post.get("Impressions") or post.get("views") or 0)
-
-    txt = _text(post)
-    ctype = str(post.get("type") or post.get("Post Type") or post.get("Content Type") or "").lower()
-    is_carousel = any(k in ctype for k in ("document", "carousel", "pdf"))
-
-    raw = likes + (8.0 * comments) + (6.0 * shares) + (6.5 * saves) + (2.0 * clicks) + (0.03 * impressions)
-    mult = 1.34 if is_carousel else 1.0
-    if re.search(r"https?://(?!www\.linkedin\.com|lnkd\.in)\S+", txt):
-        mult *= 0.78
-    return round(raw * mult, 2)
+def calculate_360brew_score(post: dict):
+    """Full internal policy score, or None when weighted evidence is missing."""
+    return score_post(post, "linkedin")["score"]
 
 
-def calculate_360brew_rate(post: dict) -> float:
-    impressions = _num(post.get("impressions") or post.get("Impressions") or post.get("views") or 0)
-    followers = _num(post.get("authorFollowers") or post.get("followers") or 0)
-    score = calculate_360brew_score(post)
-    denom = max(impressions, followers, 200.0)
-    return round((score / denom) * 100.0, 3)
+def calculate_360brew_rate(post: dict):
+    """Legacy interface: no composite AVS can be represented as an engagement rate."""
+    return None
 
 
-def identify_outliers(posts: list[dict], threshold_multiplier: float = 1.5) -> list[dict]:
-    if not posts:
-        return []
-    for p in posts:
-        p["_engagement_score"] = calculate_360brew_score(p)
-        p["_engagement_rate"] = calculate_360brew_rate(p)
-        p["_matrix_version"] = "2026.1-linkedin-360brew"
-
-    rates = [p["_engagement_rate"] for p in posts]
-    if len(rates) < 2:
-        return posts
-    mean_rate = statistics.mean(rates)
-    std_dev = statistics.stdev(rates)
-    if std_dev == 0:
-        return []
-    cutoff = mean_rate + (threshold_multiplier * std_dev)
-    outliers = [p for p in posts if p["_engagement_rate"] > cutoff]
-    outliers.sort(key=lambda x: x["_engagement_score"], reverse=True)
-    return outliers
+def identify_outliers(posts: list[dict], threshold_multiplier: float = 2.0) -> list[dict]:
+    return identify_policy_outliers(posts, "linkedin", threshold_multiplier)
 
 
 def extract_topics(posts: list[dict]) -> dict:
@@ -154,7 +101,7 @@ def extract_topics(posts: list[dict]) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Identify LinkedIn 360Brew outliers")
+    parser = argparse.ArgumentParser(description="Identify LinkedIn policy-evidence outliers")
     parser.add_argument("--input", "-i", required=True, help="Input .json, .csv, or .xlsx file")
     parser.add_argument("--output", "-o", required=True, help="Output outliers.json path")
     parser.add_argument("--threshold", "-t", type=float, default=1.8, help="Std-dev multiplier (default: 1.8)")
@@ -166,16 +113,17 @@ def main() -> None:
 
     out = {
         "generated": datetime.now().isoformat(),
-        "matrix": "2026.1-linkedin-360brew",
+        "matrix": "2026.11-v2.1",
         "total_posts": len(posts),
         "outlier_count": len(outliers),
+        "evidence": [p.get("_avs") for p in posts],
         "threshold": args.threshold,
         "topics": topics,
         "outliers": outliers,
     }
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
-    print(f"Analyzed {len(posts)} LinkedIn posts -> {len(outliers)} 360Brew outliers saved to {args.output}")
+    print(f"Analyzed {len(posts)} LinkedIn posts -> {len(outliers)} policy-evidence outliers saved to {args.output}")
 
 
 if __name__ == "__main__":

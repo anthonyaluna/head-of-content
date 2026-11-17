@@ -1,26 +1,19 @@
 ---
 name: linkedin-research
-description: |
-  Analyze LinkedIn posts, PDF document carousels, and Creator Analytics exports (.xlsx, .csv, JSON)
-  using LinkedIn's 2026 360Brew Semantic Dwell & Topic Authority ranking matrix.
-  Identifies high-AVS outliers, dwell multipliers, hook patterns, and ICP alignment.
+description: Analyze LinkedIn JSON, CSV, and XLSX exports for descriptive outliers using Coastline's explicit v2026.11 research weights. Use for practitioner-content research with coverage-aware results, never fabricated dwell or substantive-comment metrics.
 ---
 
-# LinkedIn 360Brew Research & Outlier Analyzer
+# LinkedIn research
 
-Analyze LinkedIn Creator exports (`.xlsx`, `.csv`), GDPR `Shares.csv`, or scraped LinkedIn JSON feeds using the **2026 LinkedIn 360Brew** ranking hierarchy:
-1. **Dwell Time & "See More" Expansion (32%)** — 8–12 slide PDF Document Carousels (`1.34x`) and well-spaced practitioner narratives.
-2. **Substantive Threaded Comments (28%)** — Multi-sentence practitioner dialogue (`15+` words) and author back-and-forth within 60 minutes.
-3. **Semantic Topic Authority & First-Hand Proof (20%)** — Repeated depth in 2–3 core pillars; demotes generic AI clichés (`0.70x`).
-4. **Saves & Reposts (13%)** — Bookmarking frameworks and operational checklists.
-5. **External Link Penalty (`0.60x`)** — Outbound links in the post body suppress feed distribution; isolate links to the first comment.
+Read `.agents/product-marketing.md` and `.claude/lib/SCORING.md`. The requested 360Brew label is historical/internal, not an assertion about LinkedIn's current deployed ranker. Do not claim a 69% topic-authority weight.
 
-## Usage
+Internal weights: dwell .34, substantive comments .26, saves/sends .18, author reply depth .10, profile actions .08, likes .04. Counts alone do not establish dwell, >12-word comments, reply depth, or private sends.
 
 ```bash
-python3 .claude/skills/linkedin-research/scripts/analyze_posts.py \
-  --input path/to/linkedin_export_or_raw.json \
-  --output linkedin-research/$(date +%Y-%m-%d_%H%M%S)/outliers.json
+python .claude/skills/linkedin-research/scripts/analyze_posts.py \
+  --input path/to/creator-export.xlsx --output linkedin-research/run/outliers.json
 ```
 
-Read `.agents/product-marketing.md` before generating final playbooks to ensure hooks and takeaways align with the target ICP and exclude anti-ICP clichés.
+Review each record's `evidence` and `_avs` object. A complete score requires all weighted normalized signals. Partial contributions remain unrescaled and compare only within matching signal-coverage and format groups of at least three posts. Missing impressions cannot be replaced by followers or an invented denominator. JSON, CSV, and XLSX export adapters retain unknown values.
+
+For drafting, use the user policy's 150–240-word atomized post, a concise two-line hook, operator evidence, and a substantive closing question only when useful. Internal format multipliers and link preferences are planning rules, not proven reach lifts. Keep external links in the proposed first comment without claiming an official fixed penalty.
