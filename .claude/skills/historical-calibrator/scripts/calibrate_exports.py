@@ -49,7 +49,7 @@ def main():
         target = inputs / path.name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
-        receipt["inputs"].append({"relative_path": str(relative), "staged_name": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+        receipt["inputs"].append({"relative_path": relative.as_posix(), "staged_name": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     receipt_path = run / "provenance.json"
     receipt_path.write_text(json.dumps(receipt, indent=2))
     db = run / "calibration.sqlite"
