@@ -65,19 +65,19 @@ The root `.skill` archives are legacy upstream snapshots. They do not include th
 
 For Coastline QA, atomization, and calibration, select the reviewed canonical checkout explicitly with `--canonical-root` or `COASTLINE_AGENT_OS_ROOT`. Follow the corresponding source skill instructions. No API credentials are needed for the local regression tests.
 
-### 5. Install the reviewed canonical dependency for local validation
+### 5. Install the canonical dependency for local validation
 
-The v2.1 wrapper implementation depends on [Coastline Agent OS PR #2867](https://github.com/anthonyaluna/coastline-codex-agent-os/pull/2867), which is still unmerged. The commands below pin reviewed commit `8523e6ee1764bee42217c541927a5cb5eeb34132` from `codex/content-brand-aeo-v21`; they do not assume `main` contains it or establish deployment readiness.
+The v2.1 wrapper implementation uses the merged `main` branch of `anthonyaluna/coastline-codex-agent-os` (including [PR #2867](https://github.com/anthonyaluna/coastline-codex-agent-os/pull/2867), [PR #2868](https://github.com/anthonyaluna/coastline-codex-agent-os/pull/2868), and [PR #2876](https://github.com/anthonyaluna/coastline-codex-agent-os/pull/2876)). Running the local validation steps below does not establish deployment readiness.
 
-Use Python 3.11 or newer and the GitHub CLI authenticated to an account with access to the canonical repository (`gh auth login` if needed). Substitute your installed interpreter for `python3.11` below if using a newer version. Starting in the `head-of-content` working folder, clone the canonical repository beside it and install its declared dependencies in a virtual environment:
+Use Python 3.11 or newer and the GitHub CLI authenticated to an account with access to the canonical repository (`gh auth login` if needed). Substitute your installed interpreter for `python3.11` below if using a newer version. Starting in the `head-of-content` working folder, clone the canonical repository beside it on `main` and install its declared dependencies in a virtual environment:
 
 ```bash
 cd ..
 gh auth status
 gh repo clone anthonyaluna/coastline-codex-agent-os coastline-codex-agent-os
 cd coastline-codex-agent-os
-git fetch origin codex/content-brand-aeo-v21
-git switch --detach 8523e6ee1764bee42217c541927a5cb5eeb34132
+git switch main
+git pull --ff-only origin main
 python3.11 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e '.[mcp]'
