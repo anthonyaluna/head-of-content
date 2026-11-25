@@ -11,7 +11,9 @@ Downloads thumbnails and generates a markdown report.
 import argparse
 import json
 import os
+import re
 import sys
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
@@ -91,7 +93,10 @@ def search_outliers(queries: list[str], api_key: str, days_back: int = 30, min_v
     try:
         with urlopen(req, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
-            return data.get("hits", [])
+            return [
+                hit for hit in data.get("hits", [])
+                if isinstance(hit, dict) and valid_video_id(hit.get("id"))
+            ]
 
     except HTTPError as e:
         print(f"API error: {e.code} - {e.reason}", file=sys.stderr)
@@ -115,6 +120,31 @@ def score_video(video: dict) -> float:
     return z_score if z_score is not None else 0.0
 
 
+def valid_video_id(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{11}", value) is not None
+
+
+def asset_path(directory: Path, video_id: str, suffix: str) -> Path | None:
+    if not valid_video_id(video_id):
+        return None
+    path = directory / f"{video_id}{suffix}"
+    if path.is_symlink():
+        return None
+    return path
+
+
+def write_asset(path: Path, data: bytes):
+    # Replacing a directory entry also avoids following links on a repeat run.
+    temp = tempfile.NamedTemporaryFile(dir=path.parent, delete=False)
+    temp_path = Path(temp.name)
+    try:
+        with temp:
+            temp.write(data)
+        temp_path.replace(path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def download_thumbnail(video: dict, output_dir: Path):
     """Download video thumbnail to output directory."""
     video_id = video.get("id")
@@ -128,17 +158,16 @@ def download_thumbnail(video: dict, output_dir: Path):
             thumb_url = thumbnails[quality]["url"]
             break
 
-    if not thumb_url or not video_id:
+    output_path = asset_path(output_dir, video_id, ".jpg")
+    if not thumb_url or output_path is None:
         return None
-
-    output_path = output_dir / f"{video_id}.jpg"
 
     try:
         req = Request(thumb_url)
         req.add_header("User-Agent", "Mozilla/5.0")
 
         with urlopen(req, timeout=15) as response:
-            output_path.write_bytes(response.read())
+            write_asset(output_path, response.read())
 
         return str(output_path)
     except (HTTPError, URLError) as e:
@@ -158,6 +187,9 @@ def fetch_transcript(video_id: str, api_key: str, output_dir: Path) -> str | Non
     Returns:
         Path to saved transcript file, or None if failed
     """
+    output_path = asset_path(output_dir, video_id, ".txt")
+    if output_path is None:
+        return None
     url = f"https://public-api.tubelab.net/v1/video/transcript/{video_id}"
 
     req = Request(url)
@@ -188,8 +220,7 @@ def fetch_transcript(video_id: str, api_key: str, output_dir: Path) -> str | Non
         if not transcript_lines:
             return None
 
-        output_path = output_dir / f"{video_id}.txt"
-        output_path.write_text("\n".join(transcript_lines), encoding="utf-8")
+        write_asset(output_path, "\n".join(transcript_lines).encode("utf-8"))
         return str(output_path)
 
     except HTTPError as e:
@@ -259,8 +290,8 @@ def generate_report(
             avg_views = channel.get("averageViews", views)
             ratio = views / avg_views if avg_views > 0 else 1.0
 
-            thumb_path = thumbnail_dir / f"{video_id}.jpg"
-            thumb_ref = f"thumbnails/{video_id}.jpg" if thumb_path.exists() else ""
+            thumb_path = asset_path(thumbnail_dir, video_id, ".jpg")
+            thumb_ref = f"thumbnails/{video_id}.jpg" if thumb_path and thumb_path.is_file() else ""
 
             report_lines.extend([
                 f"### {num}. {title}",
@@ -443,6 +474,7 @@ def main():
         snippet = video.get("snippet", {})
         stats = video.get("statistics", {})
         channel = snippet.get("channel", {})
+        transcript_path = asset_path(transcripts_dir, video_id, ".txt")
 
         # Normalize to format expected by video-content-analyzer
         outlier = {
@@ -460,7 +492,7 @@ def main():
             "discovery_basis": video.get("_discovery_basis"),
             "publishedAt": snippet.get("publishedAt", ""),
             "channelSubs": channel.get("subscribersCount", 0),
-            "transcript_path": str(transcripts_dir / f"{video_id}.txt") if (transcripts_dir / f"{video_id}.txt").exists() else None,
+            "transcript_path": str(transcript_path) if transcript_path and transcript_path.is_file() else None,
         }
         all_outliers.append(outlier)
 
